@@ -64,7 +64,7 @@ def bootstrap(**kwargs):
     """bootstraps the application. can handle setup here"""
     app = create_app()
     app.debug = True
-    app.run(host=kwargs['host'], port=kwargs['port'])
+    app.run(host=kwargs['host'], port=kwargs['port'], threaded=True)
 
 
 if __name__ == "__main__":
