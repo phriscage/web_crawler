@@ -237,7 +237,7 @@ def result(job_id):
         return jsonify(message=message, success=False), 404
     for data in mdata.get('docs'):
         if not data.get('_source', None) \
-            or not data['_source'].get('image_urls', None):
+            or not data['_source'].has_key('image_urls'):
                 message = "Incorrect data structure: '%s'" % data.keys()
                 logger.error(message)
                 return jsonify(message=message, success=False), 404
@@ -362,12 +362,14 @@ def crawl():
         message = str(error)
         logger.warn(message)
         return jsonify(message=message, success=False), 500
-    for url in crawler.root_urls:
+    for root_url in crawler.root_urls:
         ## send POST to /crawler -d '{"job_id": _id, "url": url}'
-        if url not in data['_source']['urls']:
-            logger.debug("Adding '%s' to job_id '%s'", url, job_id)
-            data['_source']['urls'][url] = None
-            thread = threading.Thread(target=crawl_url, args = (url, job_id))
+        if root_url not in data['_source']['urls']:
+            logger.debug("Adding root_url '%s' to job_id '%s'", root_url,
+                job_id)
+            data['_source']['urls'][root_url] = None
+            thread = threading.Thread(target=crawl_url, args = (root_url,
+                job_id))
             thread.daemon = True
             thread.start()
     ## updating the parent document with a partial does not override existing keys
