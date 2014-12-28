@@ -364,7 +364,7 @@ def crawl():
         return jsonify(message=message, success=False), 500
     for url in crawler.root_urls:
         ## send POST to /crawler -d '{"job_id": _id, "url": url}'
-        if url not in data['_source']['status']['urls']:
+        if url not in data['_source']['urls']:
             logger.debug("Adding '%s' to job_id '%s'", url, job_id)
             data['_source']['urls'][url] = None
             thread = threading.Thread(target=crawl_url, args = (url, job_id))
