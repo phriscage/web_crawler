@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 
 core = Blueprint('core', __name__)
 
-def crawl_url(url, job_id):
+def crawl_url(url, job_id, first_level):
     """ crawl urls using the API /crawl method """
-    payload = {'url': url, 'job_id': job_id}
+    payload = {'url': url, 'job_id': job_id, 'first_level': first_level}
     headers = {'Content-type': 'application/json'}
     method = '/crawl'
     host = 'http://localhost:8000'
@@ -102,7 +102,8 @@ def create():
     logger.debug(message)
     for url in urls:
         ## send POST to /crawler -d '{"job_id": _id, "url": url}'
-        thread = threading.Thread(target=crawl_url, args = (url, job_id))
+        thread = threading.Thread(target=crawl_url, args = (url, job_id,
+            True))
         thread.daemon = True
         thread.start()
     return jsonify(message=message, job_id=data['_id'], success=True), 201
@@ -257,7 +258,8 @@ def crawl():
 
     POST / HTTP/1.1
     Accept: application/json
-    { 'url': 'http://www.google.com', 'job_id': 'abc', 'force': False }
+    { 'url': 'http://www.google.com', 'job_id': 'abc', 'force': False,
+        'first_level': False }
 
     **Example response:**
 
@@ -276,8 +278,10 @@ def crawl():
         logger.warn(message)
         return jsonify(message=message, success=False), 400
     if not request.json.get('url', None) \
-        or not request.json.get('job_id', None):
-        message = "Required: { 'url': 'http://www.google.com', 'job_id': 'abc' }"
+        or not request.json.get('job_id', None) \
+        or not request.json.has_key('first_level'):
+        message = ("Required: { 'url': 'http://www.google.com', 'job_id': 'abc'"
+            ", 'first_level': False }")
         logger.warn(message)
         return jsonify(message=message, success=False), 400
     job_id = request.json['job_id']
@@ -345,7 +349,7 @@ def crawl():
     message = "'%s' URL added successfully to inprogress!" % url
     logger.debug(message)
     crawler = Crawler()
-    crawler.main(url)
+    crawler.main(url, request.json['first_level'])
     args = {
         'index': INDEX,
         'id': url,
@@ -362,16 +366,14 @@ def crawl():
         message = str(error)
         logger.warn(message)
         return jsonify(message=message, success=False), 500
+    ## thread the urls after the document is updated
+    thread_urls = []
     for root_url in crawler.root_urls:
-        ## send POST to /crawler -d '{"job_id": _id, "url": url}'
         if root_url not in data['_source']['urls']:
             logger.debug("Adding root_url '%s' to job_id '%s'", root_url,
                 job_id)
             data['_source']['urls'][root_url] = None
-            thread = threading.Thread(target=crawl_url, args = (root_url,
-                job_id))
-            thread.daemon = True
-            thread.start()
+            thread_urls.append(root_url)
     ## updating the parent document with a partial does not override existing keys
     data['_source']['status']['inprogress'].pop(url, None)
     data['_source']['status']['completed'][url] = None
@@ -395,5 +397,11 @@ def crawl():
         message = str(error)
         logger.warn(message)
         return jsonify(message=message, success=False), 500
+    for root_url in thread_urls:
+        thread = threading.Thread(target=crawl_url, args = (root_url, job_id,
+            False))
+        thread.daemon = True
+        thread.start()
+    ## updating the parent document with a partial does not override existing keys
     message = "'%s' URL added successfully to completed!" % url
     return jsonify(message=message, success=True)

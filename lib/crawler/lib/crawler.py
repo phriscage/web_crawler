@@ -11,7 +11,7 @@ from urlparse import urlparse
 from bs4 import BeautifulSoup
 
 IMAGE_URL_RE = re.compile(r'\.(img|png|gif)$')
-MAX_LEVEL = 2
+MAX_DEPTH = 2
 
 logger = logging.getLogger(__name__)
 logging.getLogger("requests").setLevel(logging.WARNING)
@@ -45,7 +45,8 @@ class Crawler(object):
         self.absolute_urls = set()
         self.image_urls = set()
         self.image_url_re = IMAGE_URL_RE
-        self.max_level = MAX_LEVEL
+        self.max_depth = MAX_DEPTH
+        self.first_level = False
         self.url = None
         self.root_url = None
 
@@ -58,15 +59,15 @@ class Crawler(object):
             raise
         self.root_url = '%s://%s' % (self.url.scheme, self.url.netloc)
 
-    def _parse_urls(self, root_url, level):
+    def _parse_urls(self, root_url, depth):
         """ parse root_url and recrusively check URLs no more than
-            self.max_level
+            self.max_depth
         Args:
             root_url (str): the root url
-            level (int): the root_url path level
+            depth (int): the root_url path depth
         """
-        logging.debug("parsing root_url, level: '%s', '%s'", root_url, level)
-        if level > self.max_level:
+        logging.debug("parsing root_url, depth: '%s', '%s'", root_url, depth)
+        if depth > self.max_depth:
             logger.info("All done")
             return
         for link_url in get_link_urls(root_url):
@@ -81,20 +82,20 @@ class Crawler(object):
             ## Parse all URLs encountered and add them to the queue, only if
             ## you are on the first level of crawling (root URLs or absolute
             ## URLs?)
-            if level == 0 and url.scheme and url.netloc:
-                logger.debug(url)
+            if str(self.first_level).lower() == 'true' and url.scheme \
+                and url.netloc:
                 self.root_urls.add(root_link_url)
                 ## send new URL to API endpoint with UUID
             if not url.path or url.path == '/' or re.search(r'%', url.path):
-                logger.warn("url.path not valid: '%s'", url)
+                #logger.warn("url.path not valid: '%s'", url)
                 continue
             if not url.netloc or root_link_url == self.root_url:
                 ## need to determine how to handle non-root relative paths
                 if not re.match(r'/', url.path) or re.match(r'../', url.path):
                     #path = re.sub('/?\.\.', '', path)'
                     continue
-                shift = self.max_level + 1
-                ## only crawl for path levels <= shift. Need to iterate over
+                shift = self.max_depth + 1
+                ## only crawl for path depths <= shift. Need to iterate over
                 ## each path <= shift to include any sub paths
                 path_parts = url.path.split('/')
                 if len(path_parts) > shift:
@@ -113,13 +114,16 @@ class Crawler(object):
                     self.absolute_urls.add(pos_url)
                     self._parse_urls(pos_url,
                         len(path.rstrip('/').split('/')) - 1)
+        self.first_level = False
 
-    def main(self, url):
+
+    def main(self, url, first_level=False):
         """ run the main logic """
         logger.info("Starting")
         logger.debug(url)
         if not self.root_url:
             self._set_url(url)
+        self.first_level = first_level
         ## only parse root_urls for now
         self._parse_urls(self.root_url, 0)
         logger.debug("%i : '%s'", len(self.root_urls), self.root_urls)
@@ -137,7 +141,7 @@ if __name__ == '__main__':
         format=("%(asctime)s %(levelname)s %(name)s[%(process)s] : %(funcName)s"
             " : %(message)s"),
     )
-    if len(sys.argv) != 2:
-        print "Argument required!"
+    if len(sys.argv) != 3:
+        print "Arguments required!"
         sys.exit(1)
-    Crawler().main(sys.argv[1])
+    Crawler().main(sys.argv[1], sys.argv[2])
